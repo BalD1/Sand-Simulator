@@ -11,7 +11,9 @@ const int cellSizeY = 25;
 const int gridSizeX = winSizeX / cellSizeX;
 const int gridSizeY = winSizeY / cellSizeY;
 
-const float cellBaseFallTime = 1;
+const float cellBaseFallTime = .25f;
+
+const float gravity = 9.81f;
 
 void DrawGrid(int grid[gridSizeX][gridSizeY], sf::RenderWindow& window, sf::RectangleShape emptyCell, sf::RectangleShape fullCell)
 {
@@ -35,7 +37,7 @@ void DrawGrid(int grid[gridSizeX][gridSizeY], sf::RenderWindow& window, sf::Rect
     window.display();
 }
 
-void ProcessGrid(int(&grid)[gridSizeX][gridSizeY], float(&fallTimeGrid)[gridSizeX][gridSizeY])
+void ProcessGrid(int(&grid)[gridSizeX][gridSizeY], std::tuple<float, int>(&fallTimeGrid)[gridSizeX][gridSizeY], float dt)
 {
     for (int x = gridSizeX - 1; x >= 0; x--)
     {
@@ -44,10 +46,25 @@ void ProcessGrid(int(&grid)[gridSizeX][gridSizeY], float(&fallTimeGrid)[gridSize
             // if is full
             if (grid[x][y] == 1)
             {
+                float& timer = std::get<0>(fallTimeGrid[x][y]);
+                int& incrModifier = std::get<1>(fallTimeGrid[x][y]);
+                if (timer > 0)
+                {
+                    timer -= dt * incrModifier;
+                    continue;
+                }
+
+                sf::Vector2i nextCell;
+                incrModifier++;
                 if (grid[x][y + 1] == 0)
                 {
                     grid[x][y] = 0;
                     grid[x][y + 1] = 1;
+                    nextCell = sf::Vector2i(x, y + 1);
+                    int& nextIncrModifier = std::get<1>(fallTimeGrid[x][y + 1]);
+                    nextIncrModifier = incrModifier;
+                    float& nextTimer = std::get<0>(fallTimeGrid[x][y + 1]);
+                    nextTimer = cellBaseFallTime + timer;
                 }
                 else
                 {
@@ -57,18 +74,40 @@ void ProcessGrid(int(&grid)[gridSizeX][gridSizeY], float(&fallTimeGrid)[gridSize
                     if (isBRightEmpty && isBLeftEmpty)
                     {
                         grid[x][y] = 0;
-                        if (rand() % 100 < 50) grid[x - 1][y + 1] = 1;
-                        else grid[x + 1][y + 1] = 1;
+                        if (rand() % 100 < 50)
+                        {
+                            grid[x - 1][y + 1] = 1;
+                            int& nextIncrModifier = std::get<1>(fallTimeGrid[x - 1][y + 1]);
+                            nextIncrModifier = incrModifier;
+                            float& nextTimer = std::get<0>(fallTimeGrid[x - 1][y + 1]);
+                            nextTimer = cellBaseFallTime + timer;
+                        }
+                        else
+                        {
+                            grid[x + 1][y + 1] = 1;
+                            int& nextIncrModifier = std::get<1>(fallTimeGrid[x + 1][y + 1]);
+                            nextIncrModifier = incrModifier;
+                            float& nextTimer = std::get<0>(fallTimeGrid[x + 1][y + 1]);
+                            nextTimer = cellBaseFallTime + timer;
+                        }
                     }
                     else if (isBRightEmpty)
                     {
                         grid[x][y] = 0;
                         grid[x + 1][y + 1] = 1;
+                        int& nextIncrModifier = std::get<1>(fallTimeGrid[x + 1][y + 1]);
+                        nextIncrModifier = incrModifier;
+                        float& nextTimer = std::get<0>(fallTimeGrid[x + 1][y + 1]);
+                        nextTimer = cellBaseFallTime + timer;
                     }
                     else if (isBLeftEmpty)
                     {
                         grid[x][y] = 0;
                         grid[x - 1][y + 1] = 1;
+                        int& nextIncrModifier = std::get<1>(fallTimeGrid[x - 1][y + 1]);
+                        nextIncrModifier = incrModifier;
+                        float& nextTimer = std::get<0>(fallTimeGrid[x - 1][y + 1]);
+                        nextTimer = cellBaseFallTime + timer;
                     }
                 }
 
@@ -77,12 +116,13 @@ void ProcessGrid(int(&grid)[gridSizeX][gridSizeY], float(&fallTimeGrid)[gridSize
     }
 }
 
-void SpawnCell(int(&grid)[gridSizeX][gridSizeY], float(&fallTimeGrid)[gridSizeX][gridSizeY], sf::Vector2i pos)
+void SpawnCell(int(&grid)[gridSizeX][gridSizeY], std::tuple<float, int>(&fallTimeGrid)[gridSizeX][gridSizeY], sf::Vector2i pos)
 {
     if (pos.x < 0 || pos.x >= gridSizeX) return;
     if (pos.y < 0 || pos.y >= gridSizeY) return;
+    if (grid[pos.x][pos.y] == 1) return;
     grid[pos.x][pos.y] = 1;
-    fallTimeGrid[pos.x][pos.y] = cellBaseFallTime;
+    fallTimeGrid[pos.x][pos.y] = { cellBaseFallTime, 1 };
 }
 
 int main()
@@ -91,14 +131,14 @@ int main()
     window.setFramerateLimit(60);
 
     int grid[gridSizeX][gridSizeY];
-    float fallTimeGrid[gridSizeX][gridSizeY];
+    std::tuple<float, int> fallTimeGrid[gridSizeX][gridSizeY];
 
     for (size_t x = 0; x < gridSizeX; x++)
     {
         for (size_t y = 0; y < gridSizeY; y++)
         {
             grid[x][y] = 0;
-            fallTimeGrid[x][y] = 0;
+            fallTimeGrid[x][y] = { 0,0 };
         }
     }
 
@@ -118,7 +158,6 @@ int main()
     shape.setPosition(400, 400); // Center circle
 
     bool isMousePressed = false;
-
 
     const float cellSpawnCD = .05f;
     float cellSpawnTimer = 0;
@@ -155,7 +194,7 @@ int main()
             //std::cout << "{" + std::to_string(mouseGridPos.x) + "," + std::to_string(mouseGridPos.y) + "}" << std::endl;
             SpawnCell(grid, fallTimeGrid, mouseGridPos);
         }
-        ProcessGrid(grid, fallTimeGrid);
+        ProcessGrid(grid, fallTimeGrid, dt.asSeconds());
         DrawGrid(grid, window, emptyCell, fullCell);
         dt = clock.restart();
     }
