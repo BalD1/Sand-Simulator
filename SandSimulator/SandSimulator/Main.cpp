@@ -151,14 +151,22 @@ void ProcessGrid(CellData(&grid)[gridSizeX][gridSizeY], float dt)
                 grid[x][y].ID = emptyCellID;
                 grid[x][y].color = cellsColor.at(emptyCellID);
 
+                bool kill = false;
                 for (size_t i = 1; i <= cellsFallIdx; i++)
                 {
-                    if (grid[nextCell.x][y + i].ID == fullCellID)
+                    if (grid[nextCell.x][nextCell.y].ID == holeCellID)
+                    {
+                        kill = true;
+                        break;
+                    }
+                    if (grid[nextCell.x][y + i].ID != emptyCellID)
                     {
                         nextCell.y -= (cellsFallIdx - (i -1));
                         break;
                     }
                 }
+                if (kill) continue;
+
                 if (grid[nextCell.x][nextCell.y].ID == holeCellID) continue;
 
                 grid[nextCell.x][nextCell.y].ID = fullCellID;
@@ -173,7 +181,7 @@ void ProcessGrid(CellData(&grid)[gridSizeX][gridSizeY], float dt)
     }
 }
 
-void SpawnCell(CellData(&grid)[gridSizeX][gridSizeY], sf::Vector2i pos, int cellType)
+void SpawnCellSingle(CellData(&grid)[gridSizeX][gridSizeY], sf::Vector2i pos, int cellType)
 {
     if (pos.x < 0 || pos.x >= gridSizeX) return;
     if (pos.y < 0 || pos.y >= gridSizeY) return;
@@ -199,9 +207,37 @@ void SpawnCell(CellData(&grid)[gridSizeX][gridSizeY], sf::Vector2i pos, int cell
         grid[pos.x][pos.y].color = cellsColor.at(cellType);
 }
 
+void SpawnCellMultiples(CellData(&grid)[gridSizeX][gridSizeY], sf::Vector2i pos, int cellType, sf::Vector2i minSpawnRange, sf::Vector2i maxSpawnRange, int minCellsCount, int maxCellsCount)
+{
+    std::random_device rd; 
+    std::mt19937 gen(rd()); 
+    std::uniform_int_distribution<> rcc(minCellsCount, maxCellsCount);
+    int randCellsCount = rcc(gen);
+    if (randCellsCount <= 0) return;
+    for (size_t i = 0; i < randCellsCount; i++)
+    {
+        std::uniform_int_distribution<> spawnRangeX(minSpawnRange.x, maxSpawnRange.x);
+        std::uniform_int_distribution<> spawnRangeY(minSpawnRange.y, maxSpawnRange.y);
+        sf::Vector2i finalPos = sf::Vector2i(spawnRangeX(gen) + pos.x, spawnRangeY(gen) + pos.y);
+        SpawnCellSingle(grid, finalPos, cellType);
+    }
+}
+
 sf::Vector2i GetGridMousePos(sf::RenderWindow& window)
 {
     return sf::Vector2i(sf::Mouse::getPosition(window).x / cellSizeX, sf::Mouse::getPosition(window).y / cellSizeY);
+}
+
+void ResetGrid(CellData(&grid)[gridSizeX][gridSizeY])
+{
+    for (size_t x = 0; x < gridSizeX; x++)
+    {
+        for (size_t y = 0; y < gridSizeY; y++)
+        {
+            grid[x][y].ID = 0;
+            grid[x][y].color = sf::Color::Transparent;
+        }
+    }
 }
 
 int main()
@@ -236,6 +272,7 @@ int main()
     }
 
     bool isLeftMousePressed = false;
+    bool isRightMousePressed = false;
 
     int cellType = 0;
 
@@ -269,20 +306,36 @@ int main()
                         case sf::Keyboard::Num4:
                             cellType = holeCellID;
                             break;
+                        case sf::Keyboard::R:
+                            ResetGrid(grid);
+                            break;
                     }
                     break;
                 case sf::Event::MouseButtonPressed:
-                    if (event.mouseButton.button == sf::Mouse::Left)
-                        isLeftMousePressed = true;
-                    if (event.mouseButton.button == sf::Mouse::Right)
+                    switch (event.mouseButton.button)
                     {
-                        sf::Vector2i mousePos = GetGridMousePos(window);
-                        std::cout << "x:" + std::to_string(mousePos.x) + " y:" + std::to_string(mousePos.y) + " : " + std::to_string(grid[mousePos.x][mousePos.y].ID) << std::endl;
+                        case sf::Mouse::Left:
+                            isLeftMousePressed = true;
+                            break;
+                        case sf::Mouse::Right:
+                            isRightMousePressed = true;
+                            break;
+                        case sf::Mouse::Middle:
+                            sf::Vector2i mousePos = GetGridMousePos(window);
+                            std::cout << "x:" + std::to_string(mousePos.x) + " y:" + std::to_string(mousePos.y) + " : " + std::to_string(grid[mousePos.x][mousePos.y].ID) << std::endl;
+                            break;
                     }
                     break;
                 case sf::Event::MouseButtonReleased:
-                    if (event.mouseButton.button == sf::Mouse::Left)
-                        isLeftMousePressed = false;
+                    switch (event.mouseButton.button)
+                    {
+                        case sf::Mouse::Left:
+                            isLeftMousePressed = false;
+                            break;
+                        case sf::Mouse::Right:
+                            isRightMousePressed = false;
+                            break;
+                        }
                     break;
             }
         }
@@ -292,7 +345,13 @@ int main()
         {
             cellSpawnTimer = cellSpawnCD;
             sf::Vector2i mouseGridPos = GetGridMousePos(window);
-            SpawnCell(grid, mouseGridPos, cellType);
+            SpawnCellMultiples(grid, mouseGridPos, cellType, sf::Vector2i(-2, -2), sf::Vector2i(2, 2), 2, 5);
+        }
+        if (isRightMousePressed && cellSpawnTimer <= 0)
+        {
+            cellSpawnTimer = cellSpawnCD; 
+            sf::Vector2i mouseGridPos = GetGridMousePos(window); 
+            SpawnCellSingle(grid, mouseGridPos, cellType);
         }
         ProcessGrid(grid, dt.asSeconds());
         DrawGrid(grid, window);
